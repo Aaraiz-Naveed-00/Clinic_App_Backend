@@ -1,10 +1,18 @@
 import CryptoJS from "crypto-js";
+import dotenv from "dotenv";
 
-const SECRET_KEY = process.env.AES_SECRET;
+dotenv.config();
 
-if (!SECRET_KEY) {
-  throw new Error("AES_SECRET environment variable is required");
+// Prefer AES_SECRET from environment; fall back to a dev-only default key
+const ENV_SECRET = process.env.AES_SECRET;
+
+if (!ENV_SECRET) {
+  console.warn(
+    "AES_SECRET environment variable is not set. Using a default development key. Do NOT use this configuration in production."
+  );
 }
+
+const SECRET_KEY = ENV_SECRET || "change-this-dev-secret-key-32-chars-min";
 
 export const encrypt = (text) => {
   if (!text) return "";

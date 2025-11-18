@@ -87,9 +87,10 @@ router.post("/", requireAdmin, logAction("CREATE_PROMO_CARD"), upload.single("im
       isActive
     } = req.body;
 
-    let imageUrl = "";
+    // Allow image URL from body when using separate upload flow
+    let imageUrl = req.body.imageUrl || "";
     
-    // Upload image to Cloudinary if provided
+    // Upload image to Cloudinary if provided as file
     if (req.file) {
       try {
         const uploadResult = await new Promise((resolve, reject) => {
@@ -157,7 +158,12 @@ router.put("/:id", requireAdmin, logAction("UPDATE_PROMO_CARD"), upload.single("
 
     let imageUrl = promoCard.imageUrl;
 
-    // Upload new image if provided
+    // Prefer explicit imageUrl when provided and no new file
+    if (!req.file && req.body.imageUrl) {
+      imageUrl = req.body.imageUrl;
+    }
+
+    // Upload new image if provided as file
     if (req.file) {
       try {
         const uploadResult = await new Promise((resolve, reject) => {

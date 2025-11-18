@@ -2,10 +2,9 @@ import cloudinary from "../config/cloudinary.js";
 import { logAction } from "../middleware/logger.js";
 import axios from "axios";
 
-// Remove.bg API integration
+// Remove.bg API integration (Node-safe)
 const removeBackground = async (imageBuffer) => {
   try {
-    // Add your Remove.bg API key in .env file
     const API_KEY = process.env.REMOVE_BG_API_KEY;
     
     if (!API_KEY) {
@@ -13,22 +12,25 @@ const removeBackground = async (imageBuffer) => {
       return null;
     }
 
-    const formData = new FormData();
-    formData.append('image_file', new Blob([imageBuffer]), 'image.jpg');
-    formData.append('size', 'auto');
-    formData.append('format', 'png');
-
-    const response = await axios.post('https://api.remove.bg/v1.0/removebg', formData, {
-      headers: {
-        'X-Api-Key': API_KEY,
-        ...formData.getHeaders()
+    // Use base64 payload instead of browser FormData/Blob to avoid Node issues
+    const response = await axios.post(
+      "https://api.remove.bg/v1.0/removebg",
+      {
+        image_file_b64: imageBuffer.toString("base64"),
+        size: "auto",
+        format: "png",
       },
-      responseType: 'arraybuffer'
-    });
+      {
+        headers: {
+          "X-Api-Key": API_KEY,
+        },
+        responseType: "arraybuffer",
+      }
+    );
 
     return Buffer.from(response.data);
   } catch (error) {
-    console.error("Background removal error:", error);
+    console.error("Background removal error:", error.response?.data || error.message || error);
     return null;
   }
 };
@@ -73,13 +75,19 @@ export const uploadImage = async (req, res) => {
         transformation.push({ background: "white" }); // Add white background for PNGs
       }
 
+      const options = {
+        resource_type: "image",
+        folder,
+        transformation
+      };
+
+      // When background is removed we force PNG, otherwise keep original format
+      if (removeBg === 'true' || removeBg === true) {
+        options.format = 'png';
+      }
+
       cloudinary.uploader.upload_stream(
-        {
-          resource_type: "image",
-          folder,
-          transformation,
-          format: removeBg ? 'png' : 'auto'
-        },
+        options,
         (error, result) => {
           if (error) reject(error);
           else resolve(result);
@@ -136,13 +144,18 @@ export const uploadDoctorPhoto = async (req, res) => {
         transformation.push({ background: "white" });
       }
 
+      const options = {
+        resource_type: "image",
+        folder: "doctors",
+        transformation
+      };
+
+      if (removeBg === 'true' || removeBg === true) {
+        options.format = 'png';
+      }
+
       cloudinary.uploader.upload_stream(
-        {
-          resource_type: "image",
-          folder: "doctors",
-          transformation,
-          format: removeBg ? 'png' : 'auto'
-        },
+        options,
         (error, result) => {
           if (error) reject(error);
           else resolve(result);
@@ -215,13 +228,18 @@ export const uploadPromoImage = async (req, res) => {
         { quality: "auto" }
       ];
 
+      const options = {
+        resource_type: "image",
+        folder: "home-promos",
+        transformation
+      };
+
+      if (removeBg === 'true' || removeBg === true) {
+        options.format = 'png';
+      }
+
       cloudinary.uploader.upload_stream(
-        {
-          resource_type: "image",
-          folder: "home-promos",
-          transformation,
-          format: removeBg ? 'png' : 'auto'
-        },
+        options,
         (error, result) => {
           if (error) reject(error);
           else resolve(result);

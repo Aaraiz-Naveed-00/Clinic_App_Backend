@@ -116,9 +116,10 @@ router.post("/", requireAdmin, logAction("CREATE_BLOG"), upload.single("image"),
       isPublished
     } = req.body;
 
-    let imageUrl = "";
+    // Allow image URL coming from separate upload flow
+    let imageUrl = req.body.imageUrl || "";
     
-    // Upload image to Cloudinary if provided
+    // Upload image to Cloudinary if provided as file
     if (req.file) {
       try {
         const uploadResult = await new Promise((resolve, reject) => {
@@ -151,6 +152,7 @@ router.post("/", requireAdmin, logAction("CREATE_BLOG"), upload.single("image"),
       excerpt,
       imageUrl,
       author,
+      authorName: author,
       authorId: req.user.id,
       category,
       tags: tags ? tags.split(',').map(tag => tag.trim()) : [],
@@ -187,7 +189,12 @@ router.put("/:id", requireAdmin, logAction("UPDATE_BLOG"), upload.single("image"
 
     let imageUrl = blog.imageUrl;
 
-    // Upload new image if provided
+    // Prefer explicit imageUrl when provided and no new file
+    if (!req.file && req.body.imageUrl) {
+      imageUrl = req.body.imageUrl;
+    }
+
+    // Upload new image if provided as file
     if (req.file) {
       try {
         const uploadResult = await new Promise((resolve, reject) => {
@@ -222,6 +229,7 @@ router.put("/:id", requireAdmin, logAction("UPDATE_BLOG"), upload.single("image"
         excerpt,
         imageUrl,
         author,
+        authorName: author || blog.authorName,
         category,
         tags: tags ? tags.split(',').map(tag => tag.trim()) : blog.tags,
         isPublished: isPublished === 'true',

@@ -33,6 +33,7 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:5173',
+    'http://localhost:8080',
     'https://your-admin-panel-domain.com',
     'https://your-mobile-app-domain.com'
   ],

@@ -75,9 +75,10 @@ export const createDoctor = async (req, res) => {
       isActive
     } = req.body;
 
-    let imageUrl = "";
+    // Allow image URL from body when using separate upload endpoint
+    let imageUrl = req.body.imageUrl || req.body.photoUrl || "";
     
-    // Upload image to Cloudinary if provided
+    // Upload image to Cloudinary if a file is provided directly
     if (req.file) {
       try {
         const uploadResult = await new Promise((resolve, reject) => {
@@ -163,7 +164,12 @@ export const updateDoctor = async (req, res) => {
 
     let imageUrl = doctor.imageUrl;
 
-    // Upload new image if provided
+    // If an explicit image URL is provided, prefer it when no new file is uploaded
+    if (!req.file && (req.body.imageUrl || req.body.photoUrl)) {
+      imageUrl = req.body.imageUrl || req.body.photoUrl;
+    }
+
+    // Upload new image if provided as file
     if (req.file) {
       try {
         const uploadResult = await new Promise((resolve, reject) => {

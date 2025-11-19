@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import User from "../models/User.js";
 import Doctor from "../models/Doctor.js";
 import Blog from "../models/Blog.js";
@@ -194,12 +195,21 @@ router.patch("/users/:id/toggle-status", requireAdmin, logAction("TOGGLE_USER_ST
 // Get system health check
 router.get("/health", requireAdmin, async (req, res) => {
   try {
-    const dbStatus = await User.findOne().limit(1) ? 'connected' : 'disconnected';
+    let dbConnected = mongoose.connection.readyState === 1;
+
+    if (!dbConnected && mongoose.connection.db) {
+      try {
+        await mongoose.connection.db.admin().command({ ping: 1 });
+        dbConnected = true;
+      } catch {
+        dbConnected = false;
+      }
+    }
     
     res.json({
       status: 'healthy',
       timestamp: new Date(),
-      database: dbStatus,
+      database: dbConnected ? 'connected' : 'disconnected',
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       version: process.version

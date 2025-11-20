@@ -283,7 +283,47 @@ router.get("/kvkk/current", async (req, res) => {
       return res.json({
         version: '1.0.0',
         title: 'KVKK Aydınlatma Metni',
-        body: 'Kişisel verileriniz KVKK kapsamında korunmaktadır.',
+        body: `KVKK Aydınlatma Metni
+
+
+Kişisel Verilerin Korunması Kanunu (KVKK) kapsamında, kişisel verilerinizin işlenmesi hakkında aşağıdaki bilgileri paylaşıyoruz:
+
+
+VERİ SORUMLUSU
+[Klinik Adı] olarak, kişisel verilerinizin korunmasına önem veriyoruz.
+
+
+İŞLENEN KİŞİSEL VERİLER
+• Ad, soyad
+• E-posta adresi
+• Telefon numarası
+• Sağlık bilgileri (randevu ve tedavi süreçleri için)
+
+
+VERİLERİN İŞLENME AMAÇLARI
+• Randevu yönetimi
+• İletişim kurma
+• Hizmet kalitesini artırma
+• Yasal yükümlülüklerin yerine getirilmesi
+
+
+VERİLERİN AKTARILMASI
+Kişisel verileriniz, yasal zorunluluklar dışında üçüncü taraflarla paylaşılmaz.
+
+
+HAKLARINIZ
+KVKK kapsamında aşağıdaki haklara sahipsiniz:
+• Kişisel verilerinizin işlenip işlenmediğini öğrenme
+• İşlenen verileriniz hakkında bilgi talep etme
+• Verilerin düzeltilmesini isteme
+• Verilerin silinmesini talep etme
+
+
+İLETİŞİM
+Sorularınız için: [iletisim@klinik.com]
+
+
+Bu metni okuduğunuzu ve kabul ettiğinizi onaylayarak devam edebilirsiniz.`,
         publishedAt: new Date()
       });
     }

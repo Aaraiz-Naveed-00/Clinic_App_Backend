@@ -143,7 +143,8 @@ router.get("/users", requireAdmin, async (req, res) => {
       ...user.toObject(),
       email: decrypt(user.email),
       phone: decrypt(user.phone),
-      address: decrypt(user.address)
+      address: decrypt(user.address),
+      lastLoginAt: user.lastLogin,
     }));
 
     const total = await User.countDocuments(filter);
@@ -160,6 +161,30 @@ router.get("/users", requireAdmin, async (req, res) => {
   } catch (error) {
     console.error("Fetch admin users error:", error);
     res.status(500).json({ error: "Failed to fetch users" });
+  }
+});
+
+// Get single user by ID (admin view)
+router.get("/users/:id", requireAdmin, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const decryptedUser = {
+      ...user.toObject(),
+      email: decrypt(user.email),
+      phone: decrypt(user.phone),
+      address: decrypt(user.address),
+      lastLoginAt: user.lastLogin,
+    };
+
+    res.json({ user: decryptedUser });
+  } catch (error) {
+    console.error("Fetch admin user by id error:", error);
+    res.status(500).json({ error: "Failed to fetch user" });
   }
 });
 
@@ -189,6 +214,42 @@ router.patch("/users/:id/toggle-status", requireAdmin, logAction("TOGGLE_USER_ST
   } catch (error) {
     console.error("Toggle user status error:", error);
     res.status(500).json({ error: "Failed to toggle user status" });
+  }
+});
+
+// Update user role (admin only)
+router.patch("/users/:id/role", requireAdmin, logAction("UPDATE_USER_ROLE"), async (req, res) => {
+  try {
+    const { role } = req.body;
+
+    if (!role || !["patient", "admin"].includes(role)) {
+      return res.status(400).json({ error: "Invalid role. Allowed roles are 'patient' and 'admin'." });
+    }
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    user.role = role;
+    user.updatedAt = new Date();
+    await user.save();
+
+    res.json({
+      success: true,
+      user: {
+        ...user.toObject(),
+        email: decrypt(user.email),
+        phone: decrypt(user.phone),
+        address: decrypt(user.address),
+        lastLoginAt: user.lastLogin,
+      },
+      message: "User role updated successfully"
+    });
+  } catch (error) {
+    console.error("Update user role error:", error);
+    res.status(500).json({ error: "Failed to update user role" });
   }
 });
 

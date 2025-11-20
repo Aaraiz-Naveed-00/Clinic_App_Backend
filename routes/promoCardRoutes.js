@@ -136,7 +136,10 @@ router.post("/", requireAdmin, logAction("CREATE_PROMO_CARD"), upload.single("im
     });
   } catch (error) {
     console.error("Create promo card error:", error);
-    res.status(500).json({ error: "Failed to create promo card" });
+    res.status(500).json({
+      error: "Failed to create promo card",
+      details: error.message,
+    });
   }
 });
 

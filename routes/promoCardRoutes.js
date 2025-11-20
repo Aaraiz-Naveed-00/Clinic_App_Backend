@@ -124,7 +124,7 @@ router.post("/", requireAdmin, logAction("CREATE_PROMO_CARD"), upload.single("im
       doctorId: doctorId || null,
       displayOrder: parseInt(displayOrder) || 0,
       isActive: isActive !== undefined ? isActive === 'true' : true,
-      createdBy: req.user.id
+      createdBy: (req.user && (req.user.id || req.user.email)) || "system"
     });
 
     // Populate doctor info for response

@@ -48,7 +48,7 @@ const promoCardSchema = new mongoose.Schema({
   }, // for external links
   createdBy: {
     type: String,
-    required: true
+    required: false
   },
   createdAt: {
     type: Date,

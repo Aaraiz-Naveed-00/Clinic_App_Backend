@@ -1,12 +1,14 @@
 import express from "express";
 import { authenticate } from "../middleware/auth.js";
 import { requireKVKKConsent } from "../middleware/contentValidator.js";
+import { upload } from "../middleware/upload.js";
 import {
   register,
   login,
   getProfile,
   updateProfile,
-  changePassword
+  changePassword,
+  uploadAvatar,
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -25,5 +27,8 @@ router.put("/profile", authenticate, updateProfile);
 
 // Change password
 router.put("/change-password", authenticate, changePassword);
+
+// Upload avatar (mobile + admin, uses Cloudinary)
+router.post("/avatar", authenticate, upload.single("avatar"), uploadAvatar);
 
 export default router;

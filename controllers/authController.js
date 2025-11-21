@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { encrypt, decrypt } from "../config/crypto.js";
 import { logAction } from "../middleware/logger.js";
+import cloudinary from "../config/cloudinary.js";
 
 // Register new user (mobile)
 export const register = async (req, res) => {
@@ -210,5 +211,41 @@ export const changePassword = async (req, res) => {
   } catch (error) {
     console.error("Change password error:", error);
     res.status(500).json({ error: "Failed to change password" });
+  }
+};
+
+// Upload user avatar (mobile + admin)
+export const uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No image file provided" });
+    }
+
+    const uploadResult = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          resource_type: "image",
+          folder: "avatars",
+          transformation: [
+            { width: 400, height: 400, crop: "fill" },
+            { quality: "auto" }
+          ]
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      ).end(req.file.buffer);
+    });
+
+    const imageUrl = uploadResult.secure_url;
+
+    res.json({
+      success: true,
+      imageUrl,
+    });
+  } catch (error) {
+    console.error("Upload avatar error:", error);
+    res.status(500).json({ error: "Failed to upload avatar" });
   }
 };

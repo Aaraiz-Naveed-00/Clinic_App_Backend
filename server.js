@@ -18,6 +18,7 @@ import legalRoutes from "./routes/legalRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import imageUploadRoutes from "./routes/imageUploadRoutes.js";
+import pushRoutes from "./routes/pushRoutes.js";
 
 // Load environment variables
 dotenv.config();
@@ -69,6 +70,7 @@ app.use("/api/legal", legalRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/upload", imageUploadRoutes);
+app.use("/api/push", pushRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

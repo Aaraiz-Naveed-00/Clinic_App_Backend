@@ -3,6 +3,7 @@ import Notification from "../models/Notification.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { logAction } from "../middleware/logger.js";
 import { noPromotionalWords } from "../middleware/contentValidator.js";
+import { sendPushNotificationToAllAsync } from "../services/expoPushService.js";
 
 const router = express.Router();
 
@@ -116,6 +117,20 @@ router.post("/", requireAdmin, logAction("CREATE_NOTIFICATION"), noPromotionalWo
 
     // Populate blog info for response
     await notification.populate('blogId', 'title imageUrl slug');
+
+    try {
+      await sendPushNotificationToAllAsync({
+        title: title || "New notification",
+        body: message,
+        data: {
+          type: type || "other",
+          notificationId: notification._id?.toString?.() ?? undefined,
+          blogId: notification.blogId ?? undefined,
+        },
+      });
+    } catch (pushError) {
+      console.error("Error sending push notification for notification", pushError);
+    }
 
     res.status(201).json({
       success: true,
@@ -233,6 +248,20 @@ router.post("/blog-published", requireAdmin, async (req, res) => {
       targetAudience: 'all',
       createdBy: req.user.id
     });
+
+    try {
+      await sendPushNotificationToAllAsync({
+        title: "New Article Published",
+        body: `Check out our latest article: ${blogTitle}`,
+        data: {
+          type: 'blog',
+          blogId,
+          notificationId: notification._id?.toString?.() ?? undefined,
+        },
+      });
+    } catch (pushError) {
+      console.error("Error sending push notification for blog-published", pushError);
+    }
 
     res.status(201).json({
       success: true,

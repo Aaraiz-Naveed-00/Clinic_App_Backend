@@ -4,6 +4,7 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { upload } from "../middleware/upload.js";
 import { logAction } from "../middleware/logger.js";
 import { noPromotionalWords } from "../middleware/contentValidator.js";
+import { sendPushNotificationToAllAsync } from "../services/expoPushService.js";
 import cloudinary from "../config/cloudinary.js";
 
 const router = express.Router();
@@ -148,6 +149,19 @@ router.post("/", requireAdmin, logAction("CREATE_ANNOUNCEMENT"), upload.single("
       isActive: isActive !== undefined ? isActive === 'true' : true,
       createdBy: req.user.id
     });
+
+    try {
+      await sendPushNotificationToAllAsync({
+        title: title || "New announcement",
+        body: description || "There is a new clinic announcement.",
+        data: {
+          type: 'announcement',
+          announcementId: announcement._id?.toString?.() ?? undefined,
+        },
+      });
+    } catch (pushError) {
+      console.error("Error sending push notification for announcement", pushError);
+    }
 
     res.status(201).json({
       success: true,

@@ -30,7 +30,8 @@ export async function sendPushNotificationToAllAsync({ title, body, data }) {
 
   for (const chunk of chunks) {
     try {
-      await expo.sendPushNotificationsAsync(chunk);
+      const receipts = await expo.sendPushNotificationsAsync(chunk);
+      console.log("Expo push receipts:", JSON.stringify(receipts, null, 2));
     } catch (error) {
       console.error("Error sending Expo push chunk", error);
     }

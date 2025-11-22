@@ -275,15 +275,16 @@ export const syncFirebaseUser = async (req, res) => {
 
     if (!user) {
       const placeholderPassword = await bcrypt.hash(firebaseUid, 10);
-      const encryptedEmpty = encrypt("");
+      const encryptedDefaultMobile = encrypt("0000000000");
+      const encryptedEmptyAddress = encrypt("");
 
       user = await User.create({
         fullName,
         name: fullName,
         email: encryptedEmail,
-        mobileNumber: encryptedEmpty,
-        phone: encryptedEmpty,
-        address: encryptedEmpty,
+        mobileNumber: encryptedDefaultMobile,
+        phone: encryptedDefaultMobile,
+        address: encryptedEmptyAddress,
         password: placeholderPassword,
         passwordHash: placeholderPassword,
         authProvider: "google",

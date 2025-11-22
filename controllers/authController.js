@@ -249,3 +249,97 @@ export const uploadAvatar = async (req, res) => {
     res.status(500).json({ error: "Failed to upload avatar" });
   }
 };
+
+// Sync Firebase-authenticated user into local User collection for admin dashboard
+export const syncFirebaseUser = async (req, res) => {
+  try {
+    const authSource = req.user?.authSource || "firebase";
+
+    if (authSource !== "firebase") {
+      return res.status(400).json({ error: "Sync is only supported for Firebase-authenticated users" });
+    }
+
+    const firebaseUid = req.user?.uid || req.user?.user_id || req.user?.sub;
+    const email = req.user?.email;
+    const displayName = req.user?.name || req.user?.fullName;
+    const photoUrl = req.user?.picture || req.user?.photoURL;
+
+    if (!email || !firebaseUid) {
+      return res.status(400).json({ error: "Missing email or Firebase UID from token" });
+    }
+
+    const fullName = displayName || email.split("@")[0] || "User";
+    const encryptedEmail = encrypt(email);
+
+    let user = await User.findOne({ email: encryptedEmail });
+
+    if (!user) {
+      const placeholderPassword = await bcrypt.hash(firebaseUid, 10);
+      const encryptedEmpty = encrypt("");
+
+      user = await User.create({
+        fullName,
+        name: fullName,
+        email: encryptedEmail,
+        mobileNumber: encryptedEmpty,
+        phone: encryptedEmpty,
+        address: encryptedEmpty,
+        password: placeholderPassword,
+        passwordHash: placeholderPassword,
+        authProvider: "google",
+        googleId: firebaseUid,
+        avatarUrl: photoUrl || "",
+        kvkkConsent: true,
+        kvkkAccepted: true,
+        kvkkAcceptedAt: new Date(),
+        lastLogin: new Date(),
+      });
+    } else {
+      let updated = false;
+
+      if (!user.googleId) {
+        user.googleId = firebaseUid;
+        updated = true;
+      }
+
+      if (user.authProvider !== "google") {
+        user.authProvider = "google";
+        updated = true;
+      }
+
+      if (fullName && user.fullName !== fullName) {
+        user.fullName = fullName;
+        user.name = fullName;
+        updated = true;
+      }
+
+      if (photoUrl && user.avatarUrl !== photoUrl) {
+        user.avatarUrl = photoUrl;
+        updated = true;
+      }
+
+      user.lastLogin = new Date();
+
+      if (updated) {
+        await user.save();
+      } else {
+        await user.save();
+      }
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email,
+        avatarUrl: user.avatarUrl,
+        authProvider: user.authProvider,
+        lastLogin: user.lastLogin,
+      },
+    });
+  } catch (error) {
+    console.error("Sync Firebase user error:", error);
+    res.status(500).json({ error: "Failed to sync Firebase user" });
+  }
+};

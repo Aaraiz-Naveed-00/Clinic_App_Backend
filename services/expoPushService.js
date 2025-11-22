@@ -6,6 +6,8 @@ const expo = new Expo();
 export async function sendPushNotificationToAllAsync({ title, body, data }) {
   const tokens = await ExpoPushToken.find({});
 
+  console.log(`Preparing to send push notification to ${tokens.length} devices`);
+
   const messages = [];
 
   for (const item of tokens) {
@@ -23,6 +25,8 @@ export async function sendPushNotificationToAllAsync({ title, body, data }) {
   }
 
   const chunks = expo.chunkPushNotifications(messages);
+
+  console.log(`Sending ${messages.length} Expo push messages in ${chunks.length} chunk(s)`);
 
   for (const chunk of chunks) {
     try {

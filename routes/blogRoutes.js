@@ -5,6 +5,8 @@ import { upload } from "../middleware/upload.js";
 import { logAction } from "../middleware/logger.js";
 import { noPromotionalWords } from "../middleware/contentValidator.js";
 import cloudinary from "../config/cloudinary.js";
+import Notification from "../models/Notification.js";
+import { sendPushNotificationToAllAsync } from "../services/expoPushService.js";
 
 const router = express.Router();
 
@@ -278,6 +280,8 @@ router.patch("/:id/toggle-publish", requireAdmin, logAction("TOGGLE_BLOG_PUBLISH
       return res.status(404).json({ error: "Blog not found" });
     }
 
+    const wasPreviouslyPublished = blog.isPublished;
+
     blog.isPublished = !blog.isPublished;
     blog.updatedAt = new Date();
     
@@ -286,6 +290,31 @@ router.patch("/:id/toggle-publish", requireAdmin, logAction("TOGGLE_BLOG_PUBLISH
     }
     
     await blog.save();
+
+    if (blog.isPublished && !wasPreviouslyPublished) {
+      try {
+        const notification = await Notification.create({
+          title: "New Article Published",
+          message: `Check out our latest article: ${blog.title}`,
+          type: 'blog',
+          blogId: blog._id,
+          targetAudience: 'all',
+          createdBy: req.user.id,
+        });
+
+        await sendPushNotificationToAllAsync({
+          title: "New Article Published",
+          body: `Check out our latest article: ${blog.title}`,
+          data: {
+            type: 'blog',
+            blogId: blog._id?.toString?.(),
+            notificationId: notification._id?.toString?.(),
+          },
+        });
+      } catch (notifyError) {
+        console.error("Failed to send blog publish notification", notifyError);
+      }
+    }
 
     res.json({
       success: true,

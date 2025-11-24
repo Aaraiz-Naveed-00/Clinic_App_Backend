@@ -1,47 +1,118 @@
-import User from "../models/User.js";
+import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 import { encrypt, decrypt } from "../config/crypto.js";
-import { logAction } from "../middleware/logger.js";
 import cloudinary from "../config/cloudinary.js";
+
+const JWT_EXPIRES_IN = "7d";
+
+const normalizeEmail = (email = "") => String(email).trim().toLowerCase();
+const boolFromValue = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    return ["true", "1", "yes", "on"].includes(value.trim().toLowerCase());
+  }
+  return Boolean(value);
+};
+
+const encryptNullable = (value) => encrypt(value || "");
+const decryptNullable = (value) => {
+  if (!value) return "";
+  try {
+    return decrypt(value);
+  } catch (error) {
+    console.error("Decrypt error", error);
+    return "";
+  }
+};
+
+const signJwt = (payload) =>
+  jwt.sign(payload, process.env.JWT_SECRET, {
+    expiresIn: JWT_EXPIRES_IN,
+  });
+
+const resolveUserFromRequest = async (req) => {
+  if (!req?.user) return null;
+
+  // Firebase-authenticated requests provide email/uid
+  if (req.user.authSource === "firebase" && req.user.email) {
+    const normalizedEmail = normalizeEmail(req.user.email);
+    const encryptedEmail = encryptNullable(normalizedEmail);
+    let user = await User.findOne({ email: encryptedEmail });
+    if (user) return user;
+
+    if (req.user.uid) {
+      user = await User.findOne({ googleId: req.user.uid });
+      if (user) return user;
+    }
+  }
+
+  // Legacy JWT paths where ID is Mongo ObjectId
+  if (req.user.mongoId && mongoose.Types.ObjectId.isValid(req.user.mongoId)) {
+    return User.findById(req.user.mongoId).select("-password -passwordHash");
+  }
+
+  if (req.user.id && mongoose.Types.ObjectId.isValid(req.user.id)) {
+    return User.findById(req.user.id).select("-password -passwordHash");
+  }
+
+  return null;
+};
+
+const serializeUserForResponse = (user) => ({
+  id: user._id,
+  fullName: user.fullName,
+  email: decryptNullable(user.email),
+  mobileNumber: decryptNullable(user.mobileNumber),
+  phone: decryptNullable(user.phone),
+  address: decryptNullable(user.address),
+  kvkkConsent: user.kvkkConsent,
+  avatarUrl: user.avatarUrl,
+  authProvider: user.authProvider,
+  lastLogin: user.lastLogin,
+});
 
 // Register new user (mobile)
 export const register = async (req, res) => {
   try {
-    const { name, email, phone, address, password, kvkkConsent } = req.body;
+    const { name, email, phone, address = "", password, kvkkConsent } = req.body;
 
-    if (!name || !email || !phone || !password || !kvkkConsent) {
-      return res.status(400).json({ error: "All fields including KVKK consent are required" });
+    if (!name || !email || !phone || !password || kvkkConsent === undefined) {
+      return res
+        .status(400)
+        .json({ error: "All fields including KVKK consent are required" });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: encrypt(email) });
+    const normalizedEmail = normalizeEmail(email);
+    const encryptedEmail = encryptNullable(normalizedEmail);
+
+    const existingUser = await User.findOne({ email: encryptedEmail });
     if (existingUser) {
       return res.status(400).json({ error: "User already exists" });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
+    const encryptedPhone = encryptNullable(phone);
+    const encryptedAddress = encryptNullable(address);
+    const consent = boolFromValue(kvkkConsent);
 
-    // Create user with encrypted sensitive data
     const user = await User.create({
       fullName: name,
       name,
-      email: encrypt(email),
-      mobileNumber: encrypt(phone),
-      phone: encrypt(phone),
-      address: encrypt(address),
+      email: encryptedEmail,
+      mobileNumber: encryptedPhone,
+      phone: encryptedPhone,
+      address: encryptedAddress,
       password: hashedPassword,
-      kvkkConsent: kvkkConsent === 'true',
-      kvkkAcceptedAt: kvkkConsent === 'true' ? new Date() : null
+      passwordHash: hashedPassword,
+      kvkkConsent: consent,
+      kvkkAccepted: consent,
+      kvkkAcceptedAt: consent ? new Date() : null,
+      lastLogin: new Date(),
     });
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, email: email },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = signJwt({ userId: user._id, email: normalizedEmail });
 
     res.status(201).json({
       success: true,
@@ -50,10 +121,10 @@ export const register = async (req, res) => {
       user: {
         id: user._id,
         fullName: user.fullName,
-        email: email,
+        email: normalizedEmail,
         mobileNumber: phone,
-        kvkkConsent: user.kvkkConsent
-      }
+        kvkkConsent: user.kvkkConsent,
+      },
     });
   } catch (error) {
     console.error("Register error:", error);
@@ -70,30 +141,23 @@ export const login = async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    // Find user by encrypted email
-    const encryptedEmail = encrypt(email);
+    const normalizedEmail = normalizeEmail(email);
+    const encryptedEmail = encryptNullable(normalizedEmail);
     const user = await User.findOne({ email: encryptedEmail });
 
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // Check password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // Update last login
     user.lastLogin = new Date();
     await user.save();
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, email: email },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = signJwt({ userId: user._id, email: normalizedEmail });
 
     res.json({
       success: true,
@@ -102,10 +166,10 @@ export const login = async (req, res) => {
       user: {
         id: user._id,
         fullName: user.fullName,
-        email: email,
-        mobileNumber: decrypt(user.mobileNumber),
-        kvkkConsent: user.kvkkConsent
-      }
+        email: normalizedEmail,
+        mobileNumber: decryptNullable(user.mobileNumber),
+        kvkkConsent: user.kvkkConsent,
+      },
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -116,24 +180,15 @@ export const login = async (req, res) => {
 // Get user profile
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password -passwordHash");
+    const user = await resolveUserFromRequest(req);
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Decrypt sensitive data for response
-    const userData = {
-      ...user.toObject(),
-      email: decrypt(user.email),
-      mobileNumber: decrypt(user.mobileNumber),
-      phone: decrypt(user.phone),
-      address: decrypt(user.address)
-    };
-
     res.json({
       success: true,
-      user: userData
+      user: serializeUserForResponse(user),
     });
   } catch (error) {
     console.error("Get profile error:", error);
@@ -144,33 +199,34 @@ export const getProfile = async (req, res) => {
 // Update user profile
 export const updateProfile = async (req, res) => {
   try {
-    const { fullName, mobileNumber, address } = req.body;
-
-    const user = await User.findById(req.user.id);
+    const user = await resolveUserFromRequest(req);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Update fields with encryption for sensitive data
-    if (fullName) user.fullName = fullName;
-    if (mobileNumber) {
-      user.mobileNumber = encrypt(mobileNumber);
-      user.phone = encrypt(mobileNumber);
+    const { fullName, mobileNumber, address } = req.body;
+
+    if (fullName) {
+      user.fullName = fullName;
+      user.name = fullName;
     }
-    if (address) user.address = encrypt(address);
+
+    if (mobileNumber) {
+      const encryptedPhone = encryptNullable(mobileNumber);
+      user.mobileNumber = encryptedPhone;
+      user.phone = encryptedPhone;
+    }
+
+    if (address !== undefined) {
+      user.address = encryptNullable(address);
+    }
 
     await user.save();
 
     res.json({
       success: true,
       message: "Profile updated successfully",
-      user: {
-        id: user._id,
-        fullName: user.fullName,
-        email: decrypt(user.email),
-        mobileNumber: decrypt(user.mobileNumber),
-        address: decrypt(user.address)
-      }
+      user: serializeUserForResponse(user),
     });
   } catch (error) {
     console.error("Update profile error:", error);
@@ -184,21 +240,21 @@ export const changePassword = async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: "Current and new passwords are required" });
+      return res
+        .status(400)
+        .json({ error: "Current and new passwords are required" });
     }
 
-    const user = await User.findById(req.user.id);
+    const user = await resolveUserFromRequest(req);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Verify current password
     const isValidPassword = await bcrypt.compare(currentPassword, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ error: "Current password is incorrect" });
     }
 
-    // Hash new password
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedNewPassword;
     user.passwordHash = hashedNewPassword;
@@ -206,7 +262,7 @@ export const changePassword = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Password changed successfully"
+      message: "Password changed successfully",
     });
   } catch (error) {
     console.error("Change password error:", error);
@@ -222,23 +278,31 @@ export const uploadAvatar = async (req, res) => {
     }
 
     const uploadResult = await new Promise((resolve, reject) => {
-      cloudinary.uploader.upload_stream(
-        {
-          resource_type: "image",
-          folder: "avatars",
-          transformation: [
-            { width: 400, height: 400, crop: "fill" },
-            { quality: "auto" }
-          ]
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      ).end(req.file.buffer);
+      cloudinary.uploader
+        .upload_stream(
+          {
+            resource_type: "image",
+            folder: "avatars",
+            transformation: [
+              { width: 400, height: 400, crop: "fill" },
+              { quality: "auto" },
+            ],
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        )
+        .end(req.file.buffer);
     });
 
     const imageUrl = uploadResult.secure_url;
+
+    const user = await resolveUserFromRequest(req);
+    if (user) {
+      user.avatarUrl = imageUrl;
+      await user.save();
+    }
 
     res.json({
       success: true,
@@ -250,46 +314,52 @@ export const uploadAvatar = async (req, res) => {
   }
 };
 
-// Sync Firebase-authenticated user into local User collection for admin dashboard
+// Sync Firebase-authenticated user into local User collection
 export const syncFirebaseUser = async (req, res) => {
   try {
-    const authSource = req.user?.authSource || "firebase";
-
-    if (authSource !== "firebase") {
-      return res.status(400).json({ error: "Sync is only supported for Firebase-authenticated users" });
+    if (req.user?.authSource !== "firebase") {
+      return res
+        .status(400)
+        .json({ error: "Sync is only supported for Firebase-authenticated users" });
     }
 
     const firebaseUid = req.user?.uid || req.user?.user_id || req.user?.sub;
-    const email = req.user?.email;
-    const displayName = req.user?.name || req.user?.fullName;
-    const photoUrl = req.user?.picture || req.user?.photoURL;
+    const email = req.user?.email ? normalizeEmail(req.user.email) : null;
 
     if (!email || !firebaseUid) {
-      return res.status(400).json({ error: "Missing email or Firebase UID from token" });
+      return res
+        .status(400)
+        .json({ error: "Missing email or Firebase UID from token" });
     }
 
-    const fullName = displayName || email.split("@")[0] || "User";
-    const encryptedEmail = encrypt(email);
+    const fullName =
+      req.user?.name || req.user?.fullName || email.split("@")[0] || "User";
+    const photoUrl = req.user?.picture || req.user?.photoURL || "";
+    const provider = req.user?.firebase?.sign_in_provider === "password"
+      ? "password"
+      : "google";
+
+    const encryptedEmail = encryptNullable(email);
 
     let user = await User.findOne({ email: encryptedEmail });
 
     if (!user) {
       const placeholderPassword = await bcrypt.hash(firebaseUid, 10);
-      const encryptedDefaultMobile = encrypt("0000000000");
-      const encryptedEmptyAddress = encrypt("");
+      const encryptedPhone = encryptNullable("0000000000");
+      const encryptedAddress = encryptNullable("");
 
       user = await User.create({
         fullName,
         name: fullName,
         email: encryptedEmail,
-        mobileNumber: encryptedDefaultMobile,
-        phone: encryptedDefaultMobile,
-        address: encryptedEmptyAddress,
+        mobileNumber: encryptedPhone,
+        phone: encryptedPhone,
+        address: encryptedAddress,
         password: placeholderPassword,
         passwordHash: placeholderPassword,
-        authProvider: "google",
+        authProvider: provider,
         googleId: firebaseUid,
-        avatarUrl: photoUrl || "",
+        avatarUrl: photoUrl,
         kvkkConsent: true,
         kvkkAccepted: true,
         kvkkAcceptedAt: new Date(),
@@ -303,8 +373,8 @@ export const syncFirebaseUser = async (req, res) => {
         updated = true;
       }
 
-      if (user.authProvider !== "google") {
-        user.authProvider = "google";
+      if (user.authProvider !== provider) {
+        user.authProvider = provider;
         updated = true;
       }
 
@@ -343,4 +413,12 @@ export const syncFirebaseUser = async (req, res) => {
     console.error("Sync Firebase user error:", error);
     res.status(500).json({ error: "Failed to sync Firebase user" });
   }
+};
+
+// Legacy placeholder – Clerk integration disabled
+export const syncClerkUser = async (req, res) => {
+  res.status(410).json({
+    success: false,
+    error: "Clerk sync has been disabled in this deployment.",
+  });
 };

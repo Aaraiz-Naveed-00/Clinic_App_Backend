@@ -154,6 +154,8 @@ router.post("/", requireAdmin, logAction("CREATE_ANNOUNCEMENT"), upload.single("
       await sendPushNotificationToAllAsync({
         title: title || "New announcement",
         body: description || "There is a new clinic announcement.",
+        type: 'announcement',
+        resourceId: announcement._id?.toString?.() ?? undefined,
         data: {
           type: 'announcement',
           announcementId: announcement._id?.toString?.() ?? undefined,

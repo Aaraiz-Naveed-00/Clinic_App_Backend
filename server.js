@@ -35,6 +35,7 @@ app.use(cors({
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:8080',
+    'http://localhost:8081',
     'https://clinic-hub-admin.vercel.app',
     'https://your-mobile-app-domain.com',
     'https://clinic-app-backend-chi.vercel.app'

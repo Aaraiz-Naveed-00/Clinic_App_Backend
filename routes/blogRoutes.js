@@ -394,6 +394,8 @@ router.patch("/:id/toggle-publish", requireAdmin, logAction("TOGGLE_BLOG_PUBLISH
         await sendPushNotificationToAllAsync({
           title: "New Article Published",
           body: `Check out our latest article: ${blog.title}`,
+          type: 'blog',
+          resourceId: blog._id?.toString?.(),
           data: {
             type: 'blog',
             blogId: blog._id?.toString?.(),

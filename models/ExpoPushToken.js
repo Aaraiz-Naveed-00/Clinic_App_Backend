@@ -4,19 +4,25 @@ const expoPushTokenSchema = new mongoose.Schema({
   token: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
   },
   platform: {
-    type: String
+    type: String,
+    default: "unknown",
+  },
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
   },
   createdAt: {
     type: Date,
-    default: Date.now
+    default: Date.now,
   },
   lastSeenAt: {
     type: Date,
-    default: Date.now
-  }
+    default: Date.now,
+  },
 });
 
 expoPushTokenSchema.pre("save", function (next) {

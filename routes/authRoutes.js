@@ -10,6 +10,7 @@ import {
   changePassword,
   uploadAvatar,
   syncFirebaseUser,
+  syncClerkUser,
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -34,5 +35,8 @@ router.post("/avatar", authenticate, upload.single("avatar"), uploadAvatar);
 
 // Sync Firebase-authenticated user into local User collection (for admin visibility)
 router.post("/sync-firebase-user", authenticate, syncFirebaseUser);
+
+// Sync Clerk-authenticated user into local User collection (for admin visibility)
+router.post("/sync-clerk-user", authenticate, syncClerkUser);
 
 export default router;

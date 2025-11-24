@@ -343,6 +343,10 @@ export const syncFirebaseUser = async (req, res) => {
 
     let user = await User.findOne({ email: encryptedEmail });
 
+    if (!user && firebaseUid) {
+      user = await User.findOne({ googleId: firebaseUid });
+    }
+
     if (!user) {
       const placeholderPassword = await bcrypt.hash(firebaseUid, 10);
       const encryptedPhone = encryptNullable("0000000000");
@@ -375,6 +379,11 @@ export const syncFirebaseUser = async (req, res) => {
 
       if (user.authProvider !== provider) {
         user.authProvider = provider;
+        updated = true;
+      }
+
+      if (encryptedEmail && user.email !== encryptedEmail) {
+        user.email = encryptedEmail;
         updated = true;
       }
 

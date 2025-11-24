@@ -15,6 +15,7 @@ function buildDeepLink({ type, resourceId }) {
     case "doctor":
       return `${APP_SCHEME}://doctor/${resourceId}`;
     case "announcement":
+      return `${APP_SCHEME}://announcement/${resourceId}`;
     default:
       return `${APP_SCHEME}://notifications`;
   }

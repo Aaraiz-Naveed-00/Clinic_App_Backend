@@ -392,16 +392,18 @@ router.patch("/:id/toggle-publish", requireAdmin, logAction("TOGGLE_BLOG_PUBLISH
         });
 
         await sendPushNotificationToAllAsync({
-          title: "New Article Published",
-          body: `Check out our latest article: ${blog.title}`,
+        title: "New Article Published",
+        body: `Check out our latest article: ${blog.title}`,
+        type: 'blog',
+        resourceId: blog._id.toString(),
+        data: {
           type: 'blog',
-          resourceId: blog._id?.toString?.(),
-          data: {
-            type: 'blog',
-            blogId: blog._id?.toString?.(),
-            notificationId: notification._id?.toString?.(),
-          },
-        });
+          blogId: blog._id.toString(),
+          notificationId: notification._id.toString(),
+          url: `/blog/${blog.slug || blog._id}`,
+          deepLink: `clinicapp://blog/${blog._id}`
+        }
+      });
       } catch (notifyError) {
         console.error("Failed to send blog publish notification", notifyError);
       }

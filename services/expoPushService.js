@@ -2,6 +2,23 @@ import { Expo } from "expo-server-sdk";
 import ExpoPushToken from "../models/ExpoPushToken.js";
 
 const expo = new Expo();
+const APP_SCHEME = process.env.APP_SCHEME || "clinicapp";
+
+function buildDeepLink({ type, resourceId }) {
+  if (!resourceId) {
+    return `${APP_SCHEME}://notifications`;
+  }
+
+  switch (type) {
+    case "blog":
+      return `${APP_SCHEME}://blog/${resourceId}`;
+    case "doctor":
+      return `${APP_SCHEME}://doctor/${resourceId}`;
+    case "announcement":
+    default:
+      return `${APP_SCHEME}://notifications`;
+  }
+}
 
 export async function sendPushNotificationToAllAsync({ title, body, data, type, resourceId }) {
   const tokens = await ExpoPushToken.find({});
@@ -14,10 +31,12 @@ export async function sendPushNotificationToAllAsync({ title, body, data, type, 
   const notificationData = {
     ...data,
     type: type || 'other',
-    ...(type === 'blog' && resourceId && { blogId: resourceId, deepLink: `clinicapp://blog/${resourceId}` }),
+    ...(type === 'blog' && resourceId && { blogId: resourceId }),
     ...(type === 'announcement' && resourceId && { announcementId: resourceId }),
-    ...(type === 'doctor' && resourceId && { doctorId: resourceId, deepLink: `clinicapp://doctor/${resourceId}` }),
+    ...(type === 'doctor' && resourceId && { doctorId: resourceId }),
   };
+
+  const deepLink = buildDeepLink({ type, resourceId });
 
   for (const item of tokens) {
     if (!Expo.isExpoPushToken(item.token)) {
@@ -29,7 +48,10 @@ export async function sendPushNotificationToAllAsync({ title, body, data, type, 
       sound: "default",
       title,
       body,
-      data: notificationData
+      data: {
+        ...notificationData,
+        deepLink,
+      }
     });
   }
 

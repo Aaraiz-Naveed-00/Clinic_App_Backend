@@ -5,6 +5,17 @@ import { logAction } from "../middleware/logger.js";
 import { noPromotionalWords } from "../middleware/contentValidator.js";
 import { sendPushNotificationToAllAsync } from "../services/expoPushService.js";
 
+const parseBoolean = (value, defaultValue = true) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const lowered = value.toLowerCase();
+    if (lowered === "true") return true;
+    if (lowered === "false") return false;
+  }
+  if (value === null || value === undefined) return defaultValue;
+  return Boolean(value);
+};
+
 const router = express.Router();
 
 // Get all active notifications (public - for mobile app)
@@ -111,7 +122,7 @@ router.post("/", requireAdmin, logAction("CREATE_NOTIFICATION"), noPromotionalWo
       targetAudience: targetAudience || 'all',
       scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
-      isActive: isActive !== undefined ? isActive === 'true' : true,
+      isActive: parseBoolean(isActive, true),
       createdBy: req.user.id
     });
 
@@ -173,7 +184,7 @@ router.put("/:id", requireAdmin, logAction("UPDATE_NOTIFICATION"), noPromotional
         targetAudience,
         scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
-        isActive: isActive === 'true',
+        isActive: isActive !== undefined ? parseBoolean(isActive, notification.isActive) : notification.isActive,
         updatedAt: new Date()
       },
       { new: true }

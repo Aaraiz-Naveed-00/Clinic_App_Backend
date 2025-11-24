@@ -11,8 +11,7 @@ const expoPushTokenSchema = new mongoose.Schema({
     default: "unknown",
   },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
+    type: String,
     default: null,
   },
   createdAt: {

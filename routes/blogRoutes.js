@@ -9,6 +9,17 @@ import Notification from "../models/Notification.js";
 import { sendPushNotificationToAllAsync } from "../services/expoPushService.js";
 
 const router = express.Router();
+const DEFAULT_BLOG_IMAGE = "https://placehold.co/1200x630/E3F2FD/111111?text=Clinic+Blog";
+
+const escapeHtml = (input = "") =>
+  String(input)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const stripHtml = (input = "") => String(input).replace(/<[^>]+>/g, "");
 
 // Get all published blogs (public - for mobile app)
 router.get("/", async (req, res) => {
@@ -41,6 +52,84 @@ router.get("/", async (req, res) => {
   } catch (error) {
     console.error("Fetch blogs error:", error);
     res.status(500).json({ error: "Failed to fetch blogs" });
+  }
+});
+
+// SEO/share friendly blog preview (public)
+router.get("/share/:identifier", async (req, res) => {
+  try {
+    const { identifier } = req.params;
+    const isMongoId = /^[a-f\d]{24}$/i.test(identifier);
+    const query = isMongoId
+      ? { _id: identifier, isPublished: true }
+      : { slug: identifier, isPublished: true };
+
+    const blog = await Blog.findOne(query).lean();
+
+    if (!blog) {
+      return res
+        .status(404)
+        .set("Content-Type", "text/html; charset=utf-8")
+        .send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Blog not found</title></head><body style="font-family: Arial, sans-serif; text-align: center; padding: 40px;">Blog not found.</body></html>`);
+    }
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const shareIdentifier = blog.slug || blog._id?.toString?.();
+    const shareUrl = `${baseUrl}/api/blogs/share/${shareIdentifier}`;
+    const deepLink = `clinicapp://blog/${blog._id?.toString?.()}`;
+    const plainDescription = stripHtml(blog.summary || blog.excerpt || blog.content || "").trim();
+    const description = plainDescription.slice(0, 220);
+    const imageUrl = blog.imageUrl || DEFAULT_BLOG_IMAGE;
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(blog.title || "Clinic Blog")}</title>
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="${escapeHtml(blog.title || "Clinic Blog")}" />
+    <meta property="og:description" content="${escapeHtml(description)}" />
+    <meta property="og:image" content="${escapeHtml(imageUrl)}" />
+    <meta property="og:url" content="${escapeHtml(shareUrl)}" />
+    <meta property="article:author" content="${escapeHtml(blog.author || blog.authorName || "Clinic")}" />
+    <meta property="article:published_time" content="${blog.publishedAt || blog.createdAt || ""}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtml(blog.title || "Clinic Blog")}" />
+    <meta name="twitter:description" content="${escapeHtml(description)}" />
+    <meta name="twitter:image" content="${escapeHtml(imageUrl)}" />
+    <meta http-equiv="refresh" content="0; url=${escapeHtml(deepLink)}" />
+    <style>
+      body { font-family: Arial, sans-serif; background: #f7f8fb; color: #111; margin: 0; padding: 32px; display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+      .card { max-width: 640px; width: 100%; background: #fff; padding: 32px; border-radius: 16px; box-shadow: 0 15px 50px rgba(0,0,0,0.08); }
+      img { width: 100%; height: auto; border-radius: 12px; margin-bottom: 20px; }
+      h1 { font-size: 24px; margin: 0 0 16px; }
+      p { line-height: 1.6; margin-bottom: 16px; }
+      a { color: #0a84ff; text-decoration: none; font-weight: 600; }
+      .btn { display: inline-block; margin-top: 16px; padding: 12px 20px; background: #0097D9; color: #fff; border-radius: 999px; }
+    </style>
+  </head>
+  <body>
+    <article class="card">
+      <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(blog.title || "Clinic Blog")}" />
+      <h1>${escapeHtml(blog.title || "Clinic Blog")}</h1>
+      <p>${escapeHtml(description || "Tap below to read this article inside the Clinic App.")}</p>
+      <p><strong>Having trouble?</strong> <a href="${escapeHtml(deepLink)}">Open directly in the Clinic App</a>.</p>
+      <a class="btn" href="${escapeHtml(shareUrl)}?plain=1">View lightweight version</a>
+    </article>
+    <script>
+      setTimeout(function(){ window.location.href = "${deepLink}"; }, 300);
+    </script>
+  </body>
+</html>`;
+
+    return res.set("Content-Type", "text/html; charset=utf-8").send(html);
+  } catch (error) {
+    console.error("Blog share page error:", error);
+    return res
+      .status(500)
+      .set("Content-Type", "text/html; charset=utf-8")
+      .send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Unable to load article</title></head><body style="font-family: Arial, sans-serif; text-align: center; padding: 40px;">Unable to load article preview.</body></html>`);
   }
 });
 

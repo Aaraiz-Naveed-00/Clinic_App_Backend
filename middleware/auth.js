@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import admin from "../config/firebase.js";
 import fetch from "node-fetch";
+import { supabaseAdmin } from "../config/supabase.js";
 
 const ADMIN_EMAILS = process.env.ADMIN_EMAILS
   ? process.env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
@@ -12,29 +13,25 @@ const isAllowedAdminEmail = (email) => {
   return ADMIN_EMAILS.includes(String(email).toLowerCase());
 };
 
-// Verify Firebase ID token (for mobile app users)
-export const verifyFirebaseToken = async (req, res, next) => {
-  try {
-    const token = req.header("Authorization")?.replace("Bearer ", "");
-    
-    if (!token) {
-      return res.status(401).json({ error: "Access denied. No token provided." });
-    }
-
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    req.user = {
-      id: decodedToken.uid,
-      email: decodedToken.email,
-      authSource: "firebase",
-      ...decodedToken
-    };
-    
-    next();
-  } catch (error) {
-    console.error("Firebase token verification failed:", error);
-    res.status(401).json({ error: "Invalid token" });
+async function fetchSupabaseUser(token) {
+  if (!token) {
+    throw new Error("Missing token");
   }
-};
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+
+  if (error || !data?.user) {
+    throw new Error("Invalid Supabase token");
+  }
+
+  const user = data.user;
+  return {
+    id: user.id,
+    email: user.email,
+    authSource: "supabase",
+    ...user,
+  };
+}
 
 // Verify Supabase JWT token (for admin panel)
 export const verifySupabaseToken = async (req, res, next) => {
@@ -72,98 +69,35 @@ export const verifySupabaseToken = async (req, res, next) => {
   }
 };
 
-// Universal auth middleware - tries both Firebase and Supabase
 export const authenticate = async (req, res, next) => {
-  const token = req.header("Authorization")?.replace("Bearer ", "");
-  
-  if (!token) {
-    return res.status(401).json({ error: "Access denied. No token provided." });
-  }
-
-  // Try Firebase first
   try {
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    req.user = {
-      id: decodedToken.uid,
-      email: decodedToken.email,
-      authSource: "firebase",
-      ...decodedToken
-    };
-    return next();
-  } catch (firebaseError) {
-    // If Firebase fails, try Supabase
-    try {
-      const response = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: process.env.SUPABASE_JWT_SECRET
-        }
-      });
+    const token = req.header("Authorization")?.replace("Bearer ", "");
 
-      if (!response.ok) {
-        throw new Error("Invalid Supabase token");
-      }
-
-      const userData = await response.json();
-      req.user = {
-        id: userData.id,
-        email: userData.email,
-        authSource: "supabase",
-        ...userData
-      };
-      return next();
-    } catch (supabaseError) {
-      console.error("Both Firebase and Supabase token verification failed");
-      return res.status(401).json({ error: "Invalid token" });
+    if (!token) {
+      return res.status(401).json({ error: "Access denied. No token provided." });
     }
+
+    req.user = await fetchSupabaseUser(token);
+    return next();
+  } catch (error) {
+    console.error("Supabase auth verification failed:", error.message);
+    return res.status(401).json({ error: "Invalid token" });
   }
 };
 
-// Admin-only middleware (prefers existing Supabase auth, otherwise verifies Supabase JWT)
 export const requireAdmin = async (req, res, next) => {
-  // If a previous middleware already attached a Supabase user, allow
-  if (req.user?.authSource === "supabase") {
-    if (!isAllowedAdminEmail(req.user.email)) {
-      return res.status(403).json({ error: "Admin access required" });
-    }
-    return next();
-  }
-
-  // Otherwise, verify Supabase token directly from Authorization header
-  const token = req.header("Authorization")?.replace("Bearer ", "");
-
-  if (!token) {
-    return res.status(401).json({ error: "Access denied. No token provided." });
-  }
-
   try {
-    const response = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: process.env.SUPABASE_JWT_SECRET,
-      },
-    });
-
-    if (!response.ok) {
-      console.error("Supabase admin verification failed with status:", response.status);
-      return res.status(403).json({ error: "Admin access required" });
+    if (!req.user) {
+      await authenticate(req, res, () => {});
     }
 
-    const userData = await response.json();
-    req.user = {
-      id: userData.id,
-      email: userData.email,
-      authSource: "supabase",
-      ...userData,
-    };
-
-    if (!isAllowedAdminEmail(req.user.email)) {
+    if (!req.user?.email || !isAllowedAdminEmail(req.user.email)) {
       return res.status(403).json({ error: "Admin access required" });
     }
 
     return next();
   } catch (error) {
-    console.error("Supabase admin verification error:", error);
+    console.error("Admin verification error:", error.message);
     return res.status(403).json({ error: "Admin access required" });
   }
 };

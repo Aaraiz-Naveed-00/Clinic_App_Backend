@@ -9,8 +9,7 @@ import {
   updateProfile,
   changePassword,
   uploadAvatar,
-  syncFirebaseUser,
-  syncClerkUser,
+  syncSupabaseUser,
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -33,10 +32,7 @@ router.put("/change-password", authenticate, changePassword);
 // Upload avatar (mobile + admin, uses Cloudinary)
 router.post("/avatar", authenticate, upload.single("avatar"), uploadAvatar);
 
-// Sync Firebase-authenticated user into local User collection (for admin visibility)
-router.post("/sync-firebase-user", authenticate, syncFirebaseUser);
-
-// Sync Clerk-authenticated user into local User collection (for admin visibility)
-router.post("/sync-clerk-user", authenticate, syncClerkUser);
+// Sync Supabase-authenticated user into local User collection (for admin visibility)
+router.post("/sync-supabase-user", authenticate, syncSupabaseUser);
 
 export default router;

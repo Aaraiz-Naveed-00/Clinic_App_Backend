@@ -315,44 +315,45 @@ export const uploadAvatar = async (req, res) => {
 };
 
 // Sync Firebase-authenticated user into local User collection
-export const syncFirebaseUser = async (req, res) => {
+export const syncSupabaseUser = async (req, res) => {
   try {
-    if (req.user?.authSource !== "firebase") {
+    if (req.user?.authSource !== "supabase") {
       return res
         .status(400)
-        .json({ error: "Sync is only supported for Firebase-authenticated users" });
+        .json({ error: "Sync is only supported for Supabase-authenticated users" });
     }
 
-    const firebaseUid = req.user?.uid || req.user?.user_id || req.user?.sub;
+    const supabaseId = req.user?.id;
     const email = req.user?.email ? normalizeEmail(req.user.email) : null;
 
-    if (!email || !firebaseUid) {
+    if (!email || !supabaseId) {
       return res
         .status(400)
-        .json({ error: "Missing email or Firebase UID from token" });
+        .json({ error: "Missing email or Supabase user ID" });
     }
 
+    const metadata = req.user?.user_metadata ?? {};
+    const appMetadata = req.user?.app_metadata ?? {};
     const fullName =
-      req.user?.name || req.user?.fullName || email.split("@")[0] || "User";
-    const photoUrl = req.user?.picture || req.user?.photoURL || "";
-    const provider = req.user?.firebase?.sign_in_provider === "password"
-      ? "password"
-      : "google";
+      metadata.full_name || metadata.name || req.user.email?.split("@")[0] || "Kullanıcı";
+    const photoUrl = metadata.avatar_url || "";
+    const provider = appMetadata.provider === "google" ? "google" : "password";
 
     const encryptedEmail = encryptNullable(email);
 
     let user = await User.findOne({ email: encryptedEmail });
 
-    if (!user && firebaseUid) {
-      user = await User.findOne({ googleId: firebaseUid });
+    if (!user) {
+      user = await User.findOne({ supabaseId });
     }
 
-    if (!user) {
-      const placeholderPassword = await bcrypt.hash(firebaseUid, 10);
-      const encryptedPhone = encryptNullable("0000000000");
-      const encryptedAddress = encryptNullable("");
+    const placeholderPassword = await bcrypt.hash(supabaseId, 10);
+    const encryptedPhone = encryptNullable(metadata.phone || "0000000000");
+    const encryptedAddress = encryptNullable(metadata.address || "");
 
+    if (!user) {
       user = await User.create({
+        supabaseId,
         fullName,
         name: fullName,
         email: encryptedEmail,
@@ -362,7 +363,6 @@ export const syncFirebaseUser = async (req, res) => {
         password: placeholderPassword,
         passwordHash: placeholderPassword,
         authProvider: provider,
-        googleId: firebaseUid,
         avatarUrl: photoUrl,
         kvkkConsent: true,
         kvkkAccepted: true,
@@ -372,8 +372,8 @@ export const syncFirebaseUser = async (req, res) => {
     } else {
       let updated = false;
 
-      if (!user.googleId) {
-        user.googleId = firebaseUid;
+      if (!user.supabaseId) {
+        user.supabaseId = supabaseId;
         updated = true;
       }
 
@@ -398,6 +398,17 @@ export const syncFirebaseUser = async (req, res) => {
         updated = true;
       }
 
+      if (encryptedPhone && user.mobileNumber !== encryptedPhone) {
+        user.mobileNumber = encryptedPhone;
+        user.phone = encryptedPhone;
+        updated = true;
+      }
+
+      if (encryptedAddress && user.address !== encryptedAddress) {
+        user.address = encryptedAddress;
+        updated = true;
+      }
+
       user.lastLogin = new Date();
 
       if (updated) {
@@ -419,15 +430,7 @@ export const syncFirebaseUser = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Sync Firebase user error:", error);
-    res.status(500).json({ error: "Failed to sync Firebase user" });
+    console.error("Sync Supabase user error:", error);
+    res.status(500).json({ error: "Failed to sync Supabase user" });
   }
-};
-
-// Legacy placeholder – Clerk integration disabled
-export const syncClerkUser = async (req, res) => {
-  res.status(410).json({
-    success: false,
-    error: "Clerk sync has been disabled in this deployment.",
-  });
 };

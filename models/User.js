@@ -44,6 +44,11 @@ const userSchema = new mongoose.Schema({
     enum: ['password', 'google'],
     default: 'password'
   },
+  supabaseId: {
+    type: String,
+    sparse: true,
+    unique: true,
+  },
   googleId: {
     type: String,
     sparse: true,

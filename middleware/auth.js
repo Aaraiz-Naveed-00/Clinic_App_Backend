@@ -1,5 +1,3 @@
-import jwt from "jsonwebtoken";
-import admin from "../config/firebase.js";
 import fetch from "node-fetch";
 import { supabaseAdmin } from "../config/supabase.js";
 

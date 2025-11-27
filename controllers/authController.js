@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { encrypt, decrypt } from "../config/crypto.js";
 import cloudinary from "../config/cloudinary.js";
+import { supabaseAdmin } from "../config/supabase.js";
 
 const JWT_EXPIRES_IN = "7d";
 
@@ -34,19 +35,6 @@ const signJwt = (payload) =>
 
 const resolveUserFromRequest = async (req) => {
   if (!req?.user) return null;
-
-  // Firebase-authenticated requests provide email/uid
-  if (req.user.authSource === "firebase" && req.user.email) {
-    const normalizedEmail = normalizeEmail(req.user.email);
-    const encryptedEmail = encryptNullable(normalizedEmail);
-    let user = await User.findOne({ email: encryptedEmail });
-    if (user) return user;
-
-    if (req.user.uid) {
-      user = await User.findOne({ googleId: req.user.uid });
-      if (user) return user;
-    }
-  }
 
   // Legacy JWT paths where ID is Mongo ObjectId
   if (req.user.mongoId && mongoose.Types.ObjectId.isValid(req.user.mongoId)) {
@@ -314,7 +302,147 @@ export const uploadAvatar = async (req, res) => {
   }
 };
 
-// Sync Firebase-authenticated user into local User collection
+async function upsertSupabaseAccount({
+  supabaseId,
+  email,
+  metadata = {},
+  appMetadata = {},
+}) {
+  const normalizedEmail = normalizeEmail(email);
+  const encryptedEmail = encryptNullable(normalizedEmail);
+  const fullName =
+    metadata.full_name || metadata.name || normalizedEmail?.split("@")[0] || "Kullanıcı";
+  const photoUrl = metadata.avatar_url || metadata.avatarURL || "";
+  const provider = appMetadata.provider === "google" ? "google" : "password";
+  const encryptedPhone = encryptNullable(metadata.phone || metadata.phone_number || "0000000000");
+  const encryptedAddress = encryptNullable(metadata.address || "");
+
+  let user = await User.findOne({ email: encryptedEmail });
+  if (!user) {
+    user = await User.findOne({ supabaseId });
+  }
+
+  const placeholderPassword = await bcrypt.hash(supabaseId, 10);
+
+  if (!user) {
+    user = await User.create({
+      supabaseId,
+      fullName,
+      name: fullName,
+      email: encryptedEmail,
+      mobileNumber: encryptedPhone,
+      phone: encryptedPhone,
+      address: encryptedAddress,
+      password: placeholderPassword,
+      passwordHash: placeholderPassword,
+      authProvider: provider,
+      avatarUrl: photoUrl,
+      kvkkConsent: true,
+      kvkkAccepted: true,
+      kvkkAcceptedAt: new Date(),
+      lastLogin: new Date(),
+    });
+  } else {
+    let updated = false;
+
+    if (!user.supabaseId) {
+      user.supabaseId = supabaseId;
+      updated = true;
+    }
+
+    if (user.authProvider !== provider) {
+      user.authProvider = provider;
+      updated = true;
+    }
+
+    if (encryptedEmail && user.email !== encryptedEmail) {
+      user.email = encryptedEmail;
+      updated = true;
+    }
+
+    if (fullName && user.fullName !== fullName) {
+      user.fullName = fullName;
+      user.name = fullName;
+      updated = true;
+    }
+
+    if (photoUrl && user.avatarUrl !== photoUrl) {
+      user.avatarUrl = photoUrl;
+      updated = true;
+    }
+
+    if (encryptedPhone && user.mobileNumber !== encryptedPhone) {
+      user.mobileNumber = encryptedPhone;
+      user.phone = encryptedPhone;
+      updated = true;
+    }
+
+    if (encryptedAddress && user.address !== encryptedAddress) {
+      user.address = encryptedAddress;
+      updated = true;
+    }
+
+    user.lastLogin = new Date();
+
+    if (updated) {
+      await user.save();
+    } else {
+      await user.save();
+    }
+  }
+
+  return user;
+}
+
+export const registerSupabaseAccount = async (req, res) => {
+  try {
+    const { email, password, fullName } = req.body || {};
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    const normalizedEmail = normalizeEmail(email);
+
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email: normalizedEmail,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: fullName || normalizedEmail?.split("@")[0] || "",
+        name: fullName || "",
+      },
+    });
+
+    if (error) {
+      const message = error.message || "Failed to create Supabase user";
+      return res.status(400).json({ error: message });
+    }
+
+    const supabaseUser = data?.user;
+
+    if (!supabaseUser) {
+      return res.status(500).json({ error: "Supabase user creation returned no user" });
+    }
+
+    const user = await upsertSupabaseAccount({
+      supabaseId: supabaseUser.id,
+      email: supabaseUser.email,
+      metadata: supabaseUser.user_metadata ?? {},
+      appMetadata: supabaseUser.app_metadata ?? {},
+    });
+
+    res.status(201).json({
+      success: true,
+      user: serializeUserForResponse(user),
+    });
+  } catch (error) {
+    console.error("Register Supabase account error:", error);
+    res.status(500).json({ error: "Failed to register Supabase user" });
+  }
+};
+
+// Sync Supabase-authenticated user into local User collection
 export const syncSupabaseUser = async (req, res) => {
   try {
     if (req.user?.authSource !== "supabase") {
@@ -334,89 +462,13 @@ export const syncSupabaseUser = async (req, res) => {
 
     const metadata = req.user?.user_metadata ?? {};
     const appMetadata = req.user?.app_metadata ?? {};
-    const fullName =
-      metadata.full_name || metadata.name || req.user.email?.split("@")[0] || "Kullanıcı";
-    const photoUrl = metadata.avatar_url || "";
-    const provider = appMetadata.provider === "google" ? "google" : "password";
 
-    const encryptedEmail = encryptNullable(email);
-
-    let user = await User.findOne({ email: encryptedEmail });
-
-    if (!user) {
-      user = await User.findOne({ supabaseId });
-    }
-
-    const placeholderPassword = await bcrypt.hash(supabaseId, 10);
-    const encryptedPhone = encryptNullable(metadata.phone || "0000000000");
-    const encryptedAddress = encryptNullable(metadata.address || "");
-
-    if (!user) {
-      user = await User.create({
-        supabaseId,
-        fullName,
-        name: fullName,
-        email: encryptedEmail,
-        mobileNumber: encryptedPhone,
-        phone: encryptedPhone,
-        address: encryptedAddress,
-        password: placeholderPassword,
-        passwordHash: placeholderPassword,
-        authProvider: provider,
-        avatarUrl: photoUrl,
-        kvkkConsent: true,
-        kvkkAccepted: true,
-        kvkkAcceptedAt: new Date(),
-        lastLogin: new Date(),
-      });
-    } else {
-      let updated = false;
-
-      if (!user.supabaseId) {
-        user.supabaseId = supabaseId;
-        updated = true;
-      }
-
-      if (user.authProvider !== provider) {
-        user.authProvider = provider;
-        updated = true;
-      }
-
-      if (encryptedEmail && user.email !== encryptedEmail) {
-        user.email = encryptedEmail;
-        updated = true;
-      }
-
-      if (fullName && user.fullName !== fullName) {
-        user.fullName = fullName;
-        user.name = fullName;
-        updated = true;
-      }
-
-      if (photoUrl && user.avatarUrl !== photoUrl) {
-        user.avatarUrl = photoUrl;
-        updated = true;
-      }
-
-      if (encryptedPhone && user.mobileNumber !== encryptedPhone) {
-        user.mobileNumber = encryptedPhone;
-        user.phone = encryptedPhone;
-        updated = true;
-      }
-
-      if (encryptedAddress && user.address !== encryptedAddress) {
-        user.address = encryptedAddress;
-        updated = true;
-      }
-
-      user.lastLogin = new Date();
-
-      if (updated) {
-        await user.save();
-      } else {
-        await user.save();
-      }
-    }
+    const user = await upsertSupabaseAccount({
+      supabaseId,
+      email,
+      metadata,
+      appMetadata,
+    });
 
     res.json({
       success: true,

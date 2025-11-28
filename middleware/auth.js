@@ -1,7 +1,6 @@
 import fetch from "node-fetch";
 import { supabaseAdmin } from "../config/supabase.js";
 import User from "../models/User.js";
-import User from "../models/User.js"; // duplicate import statement
 
 const ADMIN_EMAILS = process.env.ADMIN_EMAILS
   ? process.env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)

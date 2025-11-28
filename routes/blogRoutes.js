@@ -383,8 +383,8 @@ router.patch("/:id/toggle-publish", requireAdmin, logAction("TOGGLE_BLOG_PUBLISH
     if (blog.isPublished && !wasPreviouslyPublished) {
       try {
         const notification = await Notification.create({
-          title: "New Article Published",
-          message: `Check out our latest article: ${blog.title}`,
+          title: "Yeni Makale Yayınlandı",
+          message: `En yeni yazımızı keşfedin: ${blog.title}`,
           type: 'blog',
           blogId: blog._id,
           targetAudience: 'all',
@@ -392,8 +392,8 @@ router.patch("/:id/toggle-publish", requireAdmin, logAction("TOGGLE_BLOG_PUBLISH
         });
 
         await sendPushNotificationToAllAsync({
-        title: "New Article Published",
-        body: `Check out our latest article: ${blog.title}`,
+        title: "Yeni Makale Yayınlandı",
+        body: `En yeni yazımızı keşfedin: ${blog.title}`,
         type: 'blog',
         resourceId: blog._id.toString(),
         data: {

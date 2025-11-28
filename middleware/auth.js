@@ -3,12 +3,35 @@ import { supabaseAdmin } from "../config/supabase.js";
 
 const ADMIN_EMAILS = process.env.ADMIN_EMAILS
   ? process.env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
-  : null;
+  : [];
 
 const isAllowedAdminEmail = (email) => {
-  if (!ADMIN_EMAILS || ADMIN_EMAILS.length === 0) return true;
   if (!email) return false;
+  if (!ADMIN_EMAILS || ADMIN_EMAILS.length === 0) return false;
   return ADMIN_EMAILS.includes(String(email).toLowerCase());
+};
+
+const hasAdminRole = (user) => {
+  if (!user) return false;
+  const metadata = user.user_metadata || {};
+  const appMetadata = user.app_metadata || {};
+  const role = metadata.role || appMetadata.role;
+  const roles = metadata.roles || appMetadata.roles;
+
+  if (typeof role === "string") {
+    if (["admin", "moderator"].includes(role.toLowerCase())) {
+      return true;
+    }
+  }
+
+  if (Array.isArray(roles)) {
+    const normalized = roles.map((r) => String(r).toLowerCase());
+    if (normalized.includes("admin") || normalized.includes("moderator")) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 async function fetchSupabaseUser(token) {

@@ -112,7 +112,10 @@ export const requireAdmin = async (req, res, next) => {
       await authenticate(req, res, () => {});
     }
 
-    if (!req.user?.email || !isAllowedAdminEmail(req.user.email)) {
+    const emailAllowed = req.user?.email ? isAllowedAdminEmail(req.user.email) : false;
+    const roleAllowed = hasAdminRole(req.user);
+
+    if (!emailAllowed && !roleAllowed) {
       return res.status(403).json({ error: "Admin access required" });
     }
 

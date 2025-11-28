@@ -13,6 +13,27 @@ import { decrypt } from "../config/crypto.js";
 
 const router = express.Router();
 
+// Verify admin access & return profile snapshot
+router.get("/me", requireAdmin, async (req, res) => {
+  try {
+    const mongoUser = await User.findOne({ supabaseId: req.user.id })
+      .select("role fullName name email isActive createdAt updatedAt");
+
+    res.json({
+      success: true,
+      supabaseUser: {
+        id: req.user.id,
+        email: req.user.email,
+        user_metadata: req.user.user_metadata ?? {},
+      },
+      mongoUser,
+    });
+  } catch (error) {
+    console.error("Admin profile fetch failed", error);
+    res.status(500).json({ error: "Failed to load admin profile" });
+  }
+});
+
 // Get dashboard statistics
 router.get("/stats", requireAdmin, async (req, res) => {
   try {

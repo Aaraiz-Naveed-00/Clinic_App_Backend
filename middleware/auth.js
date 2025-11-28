@@ -1,5 +1,6 @@
 import fetch from "node-fetch";
 import { supabaseAdmin } from "../config/supabase.js";
+import User from "../models/User.js";
 
 const ADMIN_EMAILS = process.env.ADMIN_EMAILS
   ? process.env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
@@ -13,6 +14,7 @@ const isAllowedAdminEmail = (email) => {
 
 const hasAdminRole = (user) => {
   if (!user) return false;
+
   const metadata = user.user_metadata || {};
   const appMetadata = user.app_metadata || {};
   const role = metadata.role || appMetadata.role;
@@ -32,6 +34,28 @@ const hasAdminRole = (user) => {
   }
 
   return false;
+};
+
+const hasMongoAdminRole = async (user) => {
+  if (!user?.id) {
+    return false;
+  }
+
+  try {
+    const mongoUser = await User.findOne({ supabaseId: user.id }).select("role isActive");
+    if (!mongoUser) {
+      return false;
+    }
+
+    if (mongoUser.isActive === false) {
+      return false;
+    }
+
+    return mongoUser.role === "admin";
+  } catch (error) {
+    console.warn("Mongo admin lookup failed", error?.message || error);
+    return false;
+  }
 };
 
 async function fetchSupabaseUser(token) {
@@ -114,8 +138,9 @@ export const requireAdmin = async (req, res, next) => {
 
     const emailAllowed = req.user?.email ? isAllowedAdminEmail(req.user.email) : false;
     const roleAllowed = hasAdminRole(req.user);
+    const mongoRoleAllowed = await hasMongoAdminRole(req.user);
 
-    if (!emailAllowed && !roleAllowed) {
+    if (!emailAllowed && !roleAllowed && !mongoRoleAllowed) {
       return res.status(403).json({ error: "Admin access required" });
     }
 
